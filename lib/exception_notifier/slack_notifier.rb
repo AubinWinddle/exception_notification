@@ -15,14 +15,17 @@ module ExceptionNotifier
       @notifiers = {}
     end
 
-    def notifier_for(options)
-      @notifiers[options.fetch(:channel)] ||= Slack::Notifier.new options.fetch(:webhook_url), options
+    def notifier_for(channel)
+      channel = channel || @options[:channel]
+      options = @options.merge(channel: channel)
+      @notifiers[channel] ||= Slack::Notifier.new @options[:webhook_url], options
     rescue
       nil
     end
 
     def call(exception, options={})
-      notifier = notifier_for(@options.merge(options))
+      current_channel = options[:channel]
+      notifier = notifier_for(current_channel)
       errors_count = options[:accumulated_errors_count].to_i
       measure_word = errors_count > 1 ? errors_count : (exception.class.to_s =~ /^[aeiou]/i ? 'An' : 'A')
       exception_name = "*#{measure_word}* `#{exception.class.to_s}`"
@@ -62,7 +65,7 @@ module ExceptionNotifier
 
       attchs = [color: @color, text: text, fields: fields, mrkdwn_in: %w(text fields)]
 
-      if valid?
+      if valid?(current_channel)
         send_notice(exception, options, clean_message, @message_opts.merge(attachments: attchs)) do |msg, message_opts|
           notifier.ping '', message_opts
         end
@@ -71,8 +74,8 @@ module ExceptionNotifier
 
     protected
 
-    def valid?
-      !notifier_for(@options).nil?
+    def valid?(current_channel)
+      !notifier_for(current_channel).nil?
     end
 
     def deep_reject(hash, block)
