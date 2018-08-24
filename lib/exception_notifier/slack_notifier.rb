@@ -62,6 +62,7 @@ module ExceptionNotifier
       end
 
       fields.concat(@additional_fields) if @additional_fields
+      fields.concat(options[:additional_fields]) if options[:additional_fields]
 
       attchs = [color: @color, text: text, fields: fields, mrkdwn_in: %w(text fields)]
 
