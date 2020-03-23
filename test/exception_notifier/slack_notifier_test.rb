@@ -2,17 +2,17 @@ require 'test_helper'
 require 'slack-notifier'
 
 class SlackNotifierTest < ActiveSupport::TestCase
-
   def setup
     @exception = fake_exception
     @exception.stubs(:backtrace).returns(fake_backtrace)
     @exception.stubs(:message).returns('exception message')
+    ExceptionNotifier::SlackNotifier.any_instance.stubs(:clean_backtrace).returns(fake_cleaned_backtrace)
     Socket.stubs(:gethostname).returns('example.com')
   end
 
-  test "should send a slack notification if properly configured" do
+  test 'should send a slack notification if properly configured' do
     options = {
-      webhook_url: "http://slack.webhook.url"
+      webhook_url: 'http://slack.webhook.url'
     }
 
     Slack::Notifier.any_instance.expects(:ping).with('', fake_notification)
@@ -21,9 +21,9 @@ class SlackNotifierTest < ActiveSupport::TestCase
     slack_notifier.call(@exception)
   end
 
-  test "should send a slack notification without backtrace info if properly configured" do
+  test 'should send a slack notification without backtrace info if properly configured' do
     options = {
-      webhook_url: "http://slack.webhook.url"
+      webhook_url: 'http://slack.webhook.url'
     }
 
     Slack::Notifier.any_instance.expects(:ping).with('', fake_notification(fake_exception_without_backtrace))
@@ -32,10 +32,10 @@ class SlackNotifierTest < ActiveSupport::TestCase
     slack_notifier.call(fake_exception_without_backtrace)
   end
 
-  test "should send the notification to the specified channel" do
+  test 'should send the notification to the specified channel' do
     options = {
-      webhook_url: "http://slack.webhook.url",
-      channel: "channel"
+      webhook_url: 'http://slack.webhook.url',
+      channel: 'channel'
     }
 
     Slack::Notifier.any_instance.expects(:ping).with('', fake_notification)
@@ -47,10 +47,10 @@ class SlackNotifierTest < ActiveSupport::TestCase
     assert_equal channel, options[:channel]
   end
 
-  test "should send the notification to the specified username" do
+  test 'should send the notification to the specified username' do
     options = {
-      webhook_url: "http://slack.webhook.url",
-      username: "username"
+      webhook_url: 'http://slack.webhook.url',
+      username: 'username'
     }
 
     Slack::Notifier.any_instance.expects(:ping).with('', fake_notification)
@@ -62,9 +62,9 @@ class SlackNotifierTest < ActiveSupport::TestCase
     assert_equal username, options[:username]
   end
 
-  test "should send the notification with specific backtrace lines" do
+  test 'should send the notification with specific backtrace lines' do
     options = {
-      webhook_url: "http://slack.webhook.url",
+      webhook_url: 'http://slack.webhook.url',
       backtrace_lines: 1
     }
 
@@ -74,10 +74,10 @@ class SlackNotifierTest < ActiveSupport::TestCase
     slack_notifier.call(@exception)
   end
 
-  test "should send the notification with additional fields" do
-    field = {title: "Branch", value: "master", short: true}
+  test 'should send the notification with additional fields' do
+    field = { title: 'Branch', value: 'master', short: true }
     options = {
-      webhook_url: "http://slack.webhook.url",
+      webhook_url: 'http://slack.webhook.url',
       additional_fields: [field]
     }
 
@@ -90,17 +90,17 @@ class SlackNotifierTest < ActiveSupport::TestCase
     assert_equal additional_fields, options[:additional_fields]
   end
 
-  test "should pass the additional parameters to Slack::Notifier.ping" do
+  test 'should pass the additional parameters to Slack::Notifier.ping' do
     options = {
-      webhook_url: "http://slack.webhook.url",
-      username: "test",
-      custom_hook: "hook",
+      webhook_url: 'http://slack.webhook.url',
+      username: 'test',
+      custom_hook: 'hook',
       additional_parameters: {
-        icon_url: "icon",
+        icon_url: 'icon'
       }
     }
 
-    Slack::Notifier.any_instance.expects(:ping).with('', options[:additional_parameters].merge(fake_notification) )
+    Slack::Notifier.any_instance.expects(:ping).with('', options[:additional_parameters].merge(fake_notification))
 
     slack_notifier = ExceptionNotifier::SlackNotifier.new(options)
     slack_notifier.call(@exception)
@@ -115,22 +115,22 @@ class SlackNotifierTest < ActiveSupport::TestCase
     assert_nil slack_notifier.call(@exception)
   end
 
-  test "should pass along environment data" do
+  test 'should pass along environment data' do
     options = {
-      webhook_url: "http://slack.webhook.url",
-      ignore_data_if: lambda {|k,v|
-        "#{k}" == 'key_to_be_ignored' || v.is_a?(Hash)
+      webhook_url: 'http://slack.webhook.url',
+      ignore_data_if: lambda { |k, v|
+        k.to_s == 'key_to_be_ignored' || v.is_a?(Hash)
       }
     }
 
     notification_options = {
       env: {
-        'exception_notifier.exception_data' => {foo: 'bar', john: 'doe'}
+        'exception_notifier.exception_data' => { foo: 'bar', john: 'doe' }
       },
       data: {
         'user_id'           => 5,
         'key_to_be_ignored' => 'whatever',
-        'ignore_as_well'    => {what: 'ever'}
+        'ignore_as_well'    => { what: 'ever' }
       }
     }
 
@@ -141,29 +141,29 @@ class SlackNotifierTest < ActiveSupport::TestCase
     slack_notifier.call(@exception, notification_options)
   end
 
-  test "should call pre/post_callback proc if specified" do
+  test 'should call pre/post_callback proc if specified' do
     post_callback_called = 0
     options = {
-      webhook_url: "http://slack.webhook.url",
-      username: "test",
-      custom_hook: "hook",
-      :pre_callback => proc { |opts, notifier, backtrace, message, message_opts|
-        (message_opts[:attachments] = []) << { text: "#{backtrace.join("\n")}", color: 'danger' }
+      webhook_url: 'http://slack.webhook.url',
+      username: 'test',
+      custom_hook: 'hook',
+      pre_callback: proc { |_opts, _notifier, backtrace, _message, message_opts|
+        (message_opts[:attachments] = []) << { text: backtrace.join("\n").to_s, color: 'danger' }
       },
-      :post_callback => proc { |opts, notifier, backtrace, message, message_opts|
+      post_callback: proc { |_opts, _notifier, _backtrace, _message, _message_opts|
         post_callback_called = 1
       },
       additional_parameters: {
-        icon_url: "icon",
+        icon_url: 'icon'
       }
     }
 
     Slack::Notifier.any_instance.expects(:ping).with('',
-                                                     {:icon_url => 'icon',
-                                                      :attachments => [
-                                                        {:text => fake_backtrace.join("\n"),
-                                                         :color => 'danger'}
-                                                     ]})
+                                                     icon_url: 'icon',
+                                                     attachments: [{
+                                                       text: fake_backtrace.join("\n"),
+                                                       color: 'danger'
+                                                     }])
 
     slack_notifier = ExceptionNotifier::SlackNotifier.new(options)
     slack_notifier.call(@exception)
@@ -173,11 +173,9 @@ class SlackNotifierTest < ActiveSupport::TestCase
   private
 
   def fake_exception
-    begin
-      5/0
-    rescue Exception => e
-      e
-    end
+    5 / 0
+  rescue StandardError => e
+    e
   end
 
   def fake_exception_without_backtrace
@@ -186,17 +184,21 @@ class SlackNotifierTest < ActiveSupport::TestCase
 
   def fake_backtrace
     [
-      "backtrace line 1",
-      "backtrace line 2",
-      "backtrace line 3",
-      "backtrace line 4",
-      "backtrace line 5",
-      "backtrace line 6",
+      'backtrace line 1',
+      'backtrace line 2',
+      'backtrace line 3',
+      'backtrace line 4',
+      'backtrace line 5',
+      'backtrace line 6'
     ]
   end
 
+  def fake_cleaned_backtrace
+    fake_backtrace[2..-1]
+  end
+
   def fake_notification(exception = @exception, notification_options = {}, data_string = nil, expected_backtrace_lines = 10, additional_fields = [])
-    exception_name = "*#{exception.class.to_s =~ /^[aeiou]/i ? 'An' : 'A'}* `#{exception.class.to_s}`"
+    exception_name = "*#{exception.class.to_s =~ /^[aeiou]/i ? 'An' : 'A'}* `#{exception.class}`"
     if notification_options[:env].nil?
       text = "#{exception_name} *occured in background*"
     else
@@ -211,16 +213,15 @@ class SlackNotifierTest < ActiveSupport::TestCase
 
     text += "\n"
 
-    fields = [ { title: 'Exception', value: exception.message} ]
-    fields.push({ title: 'Hostname', value: 'example.com' })
+    fields = [{ title: 'Exception', value: exception.message }]
+    fields.push(title: 'Hostname', value: 'example.com')
     if exception.backtrace
-      formatted_backtrace = "```#{exception.backtrace.first(expected_backtrace_lines).join("\n")}```"
-      fields.push({ title: 'Backtrace', value: formatted_backtrace })
+      formatted_backtrace = "```#{fake_cleaned_backtrace.first(expected_backtrace_lines).join("\n")}```"
+      fields.push(title: 'Backtrace', value: formatted_backtrace)
     end
-    fields.push({ title: 'Data', value: "```#{data_string}```" }) if data_string
+    fields.push(title: 'Data', value: "```#{data_string}```") if data_string
     additional_fields.each { |f| fields.push(f) }
 
-    { attachments: [ color: 'danger', text: text, fields: fields, mrkdwn_in: %w(text fields) ] }
+    { attachments: [color: 'danger', text: text, fields: fields, mrkdwn_in: %w[text fields]] }
   end
-
 end

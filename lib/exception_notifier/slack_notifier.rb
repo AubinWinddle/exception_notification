@@ -27,14 +27,20 @@ module ExceptionNotifier
       current_channel = options[:channel]
       notifier = notifier_for(current_channel)
       errors_count = options[:accumulated_errors_count].to_i
-      measure_word = errors_count > 1 ? errors_count : (exception.class.to_s =~ /^[aeiou]/i ? 'An' : 'A')
-      exception_name = "*#{measure_word}* `#{exception.class.to_s}`"
 
-      if options[:env].nil?
+      measure_word = if errors_count > 1
+                       errors_count
+                     else
+                       exception_class.to_s =~ /^[aeiou]/i ? 'An' : 'A'
+                     end
+
+      exception_name = "*#{measure_word}* `#{exception_class}`"
+      env = options[:env]
+
+      if env.nil?
         data = options[:data] || {}
         text = "#{exception_name} *occured in background*\n"
       else
-        env = options[:env]
         data = (env['exception_notifier.exception_data'] || {}).merge(options[:data] || {})
 
         kontroller = env['action_controller.instance']
@@ -44,10 +50,14 @@ module ExceptionNotifier
         text += "\n"
       end
 
-      clean_message = exception.message.gsub("`", "'")
-      fields = [ { title: 'Exception', value: clean_message } ]
+      [text, data]
+    end
 
-      fields.push({ title: 'Hostname', value: Socket.gethostname })
+    def fields(clean_message, backtrace, data)
+      fields = [
+        { title: 'Exception', value: clean_message },
+        { title: 'Hostname', value: Socket.gethostname }
+      ]
 
       if exception.backtrace
         backtrace = clean_backtrace(exception, options[:backtrace_cleaner]) || []
@@ -57,8 +67,8 @@ module ExceptionNotifier
 
       unless data.empty?
         deep_reject(data, @ignore_data_if) if @ignore_data_if.is_a?(Proc)
-        data_string = data.map{|k,v| "#{k}: #{v}"}.join("\n")
-        fields.push({ title: 'Data', value: "```#{data_string}```" })
+        data_string = data.map { |k, v| "#{k}: #{v}" }.join("\n")
+        fields << { title: 'Data', value: "```#{data_string}```" }
       end
 
       fields.concat(@additional_fields) if @additional_fields
@@ -71,6 +81,8 @@ module ExceptionNotifier
           notifier.ping '', message_opts
         end
       end
+
+      fields
     end
 
     protected
@@ -90,6 +102,5 @@ module ExceptionNotifier
         end
       end
     end
-
   end
 end

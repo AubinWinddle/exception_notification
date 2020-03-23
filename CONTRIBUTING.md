@@ -18,6 +18,24 @@ need contributors to follow:
     like OS version, gem versions, etc...
   * Even better, provide a failing test case for it.
 
+To help you add information to an issue, you can use the sample_app.
+Steps to use sample_app:
+
+1) Add your configuration to (ex. with webhook):
+```ruby
+config.middleware.use ExceptionNotification::Rack,
+  # -----------------------------------
+  # Change this with your configuration
+  # https://github.com/smartinez87/exception_notification#notifiers
+                        webhook: {
+                          url: 'http://domain.com:5555/hubot/path'
+                        }
+  # -----------------------------------
+```
+
+2) Run `ruby examples/sample_app.rb`
+If exception notification is working OK, the test should pass and trigger a notification as configured above. If it's not, you can copy the information printed on the terminal related to exception notification and report an issue with more info!
+
 ## Pull Requests
 
 If you've gone the extra mile and have a patch that fixes the issue, you

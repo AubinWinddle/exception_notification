@@ -1,6 +1,6 @@
 module ExceptionNotification
   class Rack
-    class CascadePassException < Exception; end
+    class CascadePassException < RuntimeError; end
 
     def initialize(app, options = {})
       @app = app
@@ -12,7 +12,7 @@ module ExceptionNotification
 
       if options.key?(:error_grouping_cache)
         ExceptionNotifier.error_grouping_cache = options.delete(:error_grouping_cache)
-      elsif defined?(Rails)
+      elsif defined?(Rails) && Rails.respond_to?(:cache)
         ExceptionNotifier.error_grouping_cache = Rails.cache
       end
 
@@ -23,12 +23,7 @@ module ExceptionNotification
         end
       end
 
-      if options.key?(:ignore_crawlers)
-        ignore_crawlers = options.delete(:ignore_crawlers)
-        ExceptionNotifier.ignore_if do |exception, opts|
-          opts.key?(:env) && from_crawler(opts[:env], ignore_crawlers)
-        end
-      end
+      ExceptionNotifier.ignore_crawlers(options.delete(:ignore_crawlers)) if options.key?(:ignore_crawlers)
 
       @ignore_cascade_pass = options.delete(:ignore_cascade_pass) { true }
 
@@ -38,31 +33,23 @@ module ExceptionNotification
     end
 
     def call(env)
-      _, headers, _ = response = @app.call(env)
+      _, headers, = response = @app.call(env)
 
       if !@ignore_cascade_pass && headers['X-Cascade'] == 'pass'
-        msg = "This exception means that the preceding Rack middleware set the 'X-Cascade' header to 'pass' -- in " <<
-          "Rails, this often means that the route was not found (404 error)."
+        msg = "This exception means that the preceding Rack middleware set the 'X-Cascade' header to 'pass' -- in " \
+              'Rails, this often means that the route was not found (404 error).'
         raise CascadePassException, msg
       end
 
       response
     rescue Exception => exception
-      if ExceptionNotifier.notify_exception(exception, :env => env)
+      if ExceptionNotifier.notify_exception(exception, env: env)
         env['exception_notifier.delivered'] = true
       end
 
       raise exception unless exception.is_a?(CascadePassException)
+
       response
-    end
-
-    private
-
-    def from_crawler(env, ignored_crawlers)
-      agent = env['HTTP_USER_AGENT']
-      Array(ignored_crawlers).any? do |crawler|
-        agent =~ Regexp.new(crawler)
-      end
     end
   end
 end

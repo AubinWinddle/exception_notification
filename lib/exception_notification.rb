@@ -1,5 +1,6 @@
 require 'exception_notifier'
 require 'exception_notification/rack'
+require 'exception_notification/version'
 
 module ExceptionNotification
   # Alternative way to setup ExceptionNotification.

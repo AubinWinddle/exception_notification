@@ -8,6 +8,7 @@ module ExceptionNotifier
   include ErrorGrouping
 
   autoload :BacktraceCleaner, 'exception_notifier/modules/backtrace_cleaner'
+  autoload :Formatter, 'exception_notifier/modules/formatter'
 
   autoload :Notifier, 'exception_notifier/notifier'
   autoload :EmailNotifier, 'exception_notifier/email_notifier'
@@ -17,6 +18,10 @@ module ExceptionNotifier
   autoload :IrcNotifier, 'exception_notifier/irc_notifier'
   autoload :SlackNotifier, 'exception_notifier/slack_notifier'
   autoload :MattermostNotifier, 'exception_notifier/mattermost_notifier'
+  autoload :TeamsNotifier, 'exception_notifier/teams_notifier'
+  autoload :SnsNotifier, 'exception_notifier/sns_notifier'
+  autoload :GoogleChatNotifier, 'exception_notifier/google_chat_notifier'
+  autoload :DatadogNotifier, 'exception_notifier/datadog_notifier'
 
   class UndefinedNotifierError < StandardError; end
 
@@ -26,7 +31,7 @@ module ExceptionNotifier
 
   # Define a set of exceptions to be ignored, ie, dont send notifications when any of them are raised.
   mattr_accessor :ignored_exceptions
-  @@ignored_exceptions = %w{ActiveRecord::RecordNotFound Mongoid::Errors::DocumentNotFound AbstractController::ActionNotFound ActionController::RoutingError ActionController::UnknownFormat ActionController::UrlGenerationError}
+  @@ignored_exceptions = %w[ActiveRecord::RecordNotFound Mongoid::Errors::DocumentNotFound AbstractController::ActionNotFound ActionController::RoutingError ActionController::UnknownFormat ActionController::UrlGenerationError]
 
   mattr_accessor :testing_mode
   @@testing_mode = false
@@ -42,9 +47,10 @@ module ExceptionNotifier
       self.testing_mode = true
     end
 
-    def notify_exception(exception, options={})
+    def notify_exception(exception, options = {}, &block)
       return false if ignored_exception?(options[:ignore_exceptions], exception)
       return false if ignored?(exception, options)
+
       if error_grouping
         errors_count = group_error!(exception, options)
         return false unless send_notification?(exception, errors_count)
@@ -52,7 +58,7 @@ module ExceptionNotifier
 
       selected_notifiers = options.delete(:notifiers) || notifiers
       [*selected_notifiers].each do |notifier|
-        fire_notification(notifier, exception, options.dup)
+        fire_notification(notifier, exception, options.dup, &block)
       end
       true
     end
@@ -89,13 +95,20 @@ module ExceptionNotifier
       @@ignores << block
     end
 
+    def ignore_crawlers(crawlers)
+      ignore_if do |_exception, opts|
+        opts.key?(:env) && from_crawler(opts[:env], crawlers)
+      end
+    end
+
     def clear_ignore_conditions!
       @@ignores.clear
     end
 
     private
+
     def ignored?(exception, options)
-      @@ignores.any?{ |condition| condition.call(exception, options) }
+      @@ignores.any? { |condition| condition.call(exception, options) }
     rescue Exception => e
       raise e if @@testing_mode
 
@@ -104,12 +117,14 @@ module ExceptionNotifier
     end
 
     def ignored_exception?(ignore_array, exception)
-      (Array(ignored_exceptions) + Array(ignore_array)).map(&:to_s).include?(exception.class.name)
+      all_ignored_exceptions = (Array(ignored_exceptions) + Array(ignore_array)).map(&:to_s)
+      exception_ancestors = exception.class.ancestors.map(&:to_s)
+      !(all_ignored_exceptions & exception_ancestors).empty?
     end
 
-    def fire_notification(notifier_name, exception, options)
+    def fire_notification(notifier_name, exception, options, &block)
       notifier = registered_exception_notifier(notifier_name)
-      notifier.call(exception, options)
+      notifier.call(exception, options, &block)
     rescue Exception => e
       raise e if @@testing_mode
 
@@ -124,6 +139,13 @@ module ExceptionNotifier
       register_exception_notifier(name, notifier)
     rescue NameError => e
       raise UndefinedNotifierError, "No notifier named '#{name}' was found. Please, revise your configuration options. Cause: #{e.message}"
+    end
+
+    def from_crawler(env, ignored_crawlers)
+      agent = env['HTTP_USER_AGENT']
+      Array(ignored_crawlers).any? do |crawler|
+        agent =~ Regexp.new(crawler)
+      end
     end
   end
 end

@@ -1,105 +1,202 @@
 require 'test_helper'
 require 'httparty'
+require 'timecop'
+require 'json'
 
 class MattermostNotifierTest < ActiveSupport::TestCase
+  URL = 'http://localhost:8000'.freeze
 
-  test "should send notification if properly configured" do
-    options = {
-      :webhook_url => 'http://localhost:8000'
-    }
-    mattermost_notifier = ExceptionNotifier::MattermostNotifier.new
-    mattermost_notifier.httparty = FakeHTTParty.new
-
-    options = mattermost_notifier.call ArgumentError.new("foo"), options
-
-    body = ActiveSupport::JSON.decode options[:body]
-    assert body.has_key? 'text'
-    assert body.has_key? 'username'
-
-    text = body['text'].split("\n")
-    assert_equal 4, text.size
-    assert_equal '@channel', text[0]
-    assert_equal 'An *ArgumentError* occured.', text[2]
-    assert_equal '*foo*', text[3]
+  def setup
+    Timecop.freeze('2018-12-09 12:07:16 UTC')
   end
 
-  test "should send notification with create issue link if specified" do
-    options = {
-      :webhook_url => 'http://localhost:8000',
-      :git_url => 'github.com/aschen'
+  def teardown
+    Timecop.return
+  end
+
+  test 'should send notification if properly configured' do
+    opts = {
+      body: default_body.to_json,
+      headers: default_headers
     }
-    mattermost_notifier = ExceptionNotifier::MattermostNotifier.new
-    mattermost_notifier.httparty = FakeHTTParty.new
 
-    options = mattermost_notifier.call ArgumentError.new("foo"), options
+    HTTParty.expects(:post).with(URL, opts)
+    notifier.call ArgumentError.new('foo')
+  end
 
-    body = ActiveSupport::JSON.decode options[:body]
+  test 'should send notification with create issue link if specified' do
+    body = default_body.merge(
+      text: [
+        '@channel',
+        error_occurred_in,
+        'An *ArgumentError* occurred.',
+        '*foo*',
+        github_link
+      ].join("\n")
+    )
 
-    text = body['text'].split("\n")
-    assert_equal 5, text.size
-    assert_equal '[Create an issue](github.com/aschen/dummy/issues/new/?issue%5Btitle%5D=%5BBUG%5D+Error+500+%3A++%28ArgumentError%29+foo)', text[4]
+    opts = {
+      body: body.to_json,
+      headers: default_headers
+    }
+
+    HTTParty.expects(:post).with(URL, opts)
+    notifier.call ArgumentError.new('foo'), git_url: 'github.com/aschen'
   end
 
   test 'should add username and icon_url params to the notification if specified' do
-    options = {
-      :webhook_url => 'http://localhost:8000',
-      :username => "Test Bot",
-      :avatar => 'http://site.com/icon.png'
+    body = default_body.merge(
+      username: 'Test Bot',
+      icon_url: 'http://site.com/icon.png'
+    )
+
+    opts = {
+      body: body.to_json,
+      headers: default_headers
     }
-    mattermost_notifier = ExceptionNotifier::MattermostNotifier.new
-    mattermost_notifier.httparty = FakeHTTParty.new
 
-    options = mattermost_notifier.call ArgumentError.new("foo"), options
-
-    body = ActiveSupport::JSON.decode options[:body]
-
-    assert_equal 'Test Bot', body['username']
-    assert_equal 'http://site.com/icon.png', body['icon_url']
+    HTTParty.expects(:post).with(URL, opts)
+    notifier.call(
+      ArgumentError.new('foo'),
+      username: 'Test Bot',
+      avatar: 'http://site.com/icon.png'
+    )
   end
 
   test 'should add other HTTParty options to params' do
-    options = {
-      :webhook_url => 'http://localhost:8000',
-      :username => "Test Bot",
-      :avatar => 'http://site.com/icon.png',
-      :basic_auth => {
-        :username => 'clara',
-        :password => 'password'
-      }
+    opts = {
+      basic_auth: {
+        username: 'clara',
+        password: 'password'
+      },
+      body: default_body.to_json,
+      headers: default_headers
     }
-    mattermost_notifier = ExceptionNotifier::MattermostNotifier.new
-    mattermost_notifier.httparty = FakeHTTParty.new
 
-    options = mattermost_notifier.call ArgumentError.new("foo"), options
-
-    assert options.has_key? :basic_auth
-    assert 'clara', options[:basic_auth][:username]
-    assert 'password', options[:basic_auth][:password]
+    HTTParty.expects(:post).with(URL, opts)
+    notifier.call(
+      ArgumentError.new('foo'),
+      basic_auth: {
+        username: 'clara',
+        password: 'password'
+      }
+    )
   end
 
   test "should use 'An' for exceptions count if :accumulated_errors_count option is nil" do
-    mattermost_notifier = ExceptionNotifier::MattermostNotifier.new
-    exception = ArgumentError.new("foo")
-    mattermost_notifier.instance_variable_set(:@exception, exception)
-    mattermost_notifier.instance_variable_set(:@options, {})
+    opts = {
+      body: default_body.to_json,
+      headers: default_headers
+    }
 
-    assert_includes mattermost_notifier.send(:message_header), "An *ArgumentError* occured."
+    HTTParty.expects(:post).with(URL, opts)
+    notifier.call(ArgumentError.new('foo'))
   end
 
-  test "shoud use direct errors count if :accumulated_errors_count option is 5" do
-    mattermost_notifier = ExceptionNotifier::MattermostNotifier.new
-    exception = ArgumentError.new("foo")
-    mattermost_notifier.instance_variable_set(:@exception, exception)
-    mattermost_notifier.instance_variable_set(:@options, { accumulated_errors_count: 5 })
+  test 'shoud use direct errors count if :accumulated_errors_count option is 5' do
+    body = default_body.merge(
+      text: [
+        '@channel',
+        error_occurred_in,
+        '5 *ArgumentError* occurred.',
+        '*foo*'
+      ].join("\n")
+    )
 
-    assert_includes mattermost_notifier.send(:message_header), "5 *ArgumentError* occured."
+    opts = {
+      body: body.to_json,
+      headers: default_headers
+    }
+
+    HTTParty.expects(:post).with(URL, opts)
+    notifier.call(ArgumentError.new('foo'), accumulated_errors_count: 5)
   end
-end
 
-class FakeHTTParty
+  test 'should include backtrace and request info' do
+    body = default_body.merge(
+      text: [
+        '@channel',
+        error_occurred_in,
+        'An *ArgumentError* occurred.',
+        '*foo*',
+        '### Request',
+        '```',
+        '* url : http://test.address/?id=foo',
+        '* http_method : GET',
+        '* ip_address : 127.0.0.1',
+        '* parameters : {"id"=>"foo"}',
+        '* timestamp : 2018-12-09 12:07:16 UTC',
+        '```',
+        '### Backtrace',
+        '```',
+        "* app/controllers/my_controller.rb:53:in `my_controller_params'",
+        "* app/controllers/my_controller.rb:34:in `update'",
+        '```'
+      ].join("\n")
+    )
 
-  def post(url, options)
-    return options
+    opts = {
+      body: body.to_json,
+      headers: default_headers
+    }
+
+    HTTParty.expects(:post).with(URL, opts)
+
+    exception = ArgumentError.new('foo')
+    exception.set_backtrace([
+                              "app/controllers/my_controller.rb:53:in `my_controller_params'",
+                              "app/controllers/my_controller.rb:34:in `update'"
+                            ])
+
+    notifier.call(exception, env: test_env)
   end
 
+  private
+
+  def notifier
+    ExceptionNotifier::MattermostNotifier.new(webhook_url: URL)
+  end
+
+  def default_body
+    {
+      text: [
+        '@channel',
+        error_occurred_in,
+        'An *ArgumentError* occurred.',
+        '*foo*'
+      ].join("\n"),
+      username: 'Exception Notifier'
+    }
+  end
+
+  def default_headers
+    { 'Content-Type' => 'application/json' }
+  end
+
+  def test_env
+    Rack::MockRequest.env_for(
+      '/',
+      'HTTP_HOST' => 'test.address',
+      'REMOTE_ADDR' => '127.0.0.1',
+      'HTTP_USER_AGENT' => 'Rails Testing',
+      params: { id: 'foo' }
+    )
+  end
+
+  def error_occurred_in
+    if defined?(::Rails) && ::Rails.respond_to?(:env)
+      '### ⚠️ Error occurred in test ⚠️'
+    else
+      '### ⚠️ Error occurred ⚠️'
+    end
+  end
+
+  def github_link
+    if defined?(::Rails) && ::Rails.respond_to?(:application)
+      '[Create an issue](github.com/aschen/dummy/issues/new/?issue%5Btitle%5D=%5BBUG%5D+Error+500+%3A++%28ArgumentError%29+foo)'
+    else
+      # TODO: fix missing app name
+      '[Create an issue](github.com/aschen//issues/new/?issue%5Btitle%5D=%5BBUG%5D+Error+500+%3A++%28ArgumentError%29+foo)'
+    end
+  end
 end

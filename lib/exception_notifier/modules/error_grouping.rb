@@ -27,7 +27,7 @@ module ExceptionNotifier
       def error_count(error_key)
         count = begin
           error_grouping_cache.read(error_key)
-        rescue => e
+        rescue StandardError => e
           ExceptionNotifier.logger.warn("#{error_grouping_cache.inspect} failed to read, reason: #{e.message}. Falling back to memory cache store.")
           fallback_cache_store.read(error_key)
         end
@@ -37,7 +37,7 @@ module ExceptionNotifier
 
       def save_error_count(error_key, count)
         error_grouping_cache.write(error_key, count, expires_in: error_grouping_period)
-      rescue => e
+      rescue StandardError => e
         ExceptionNotifier.logger.warn("#{error_grouping_cache.inspect} failed to write, reason: #{e.message}. Falling back to memory cache store.")
         fallback_cache_store.write(error_key, count, expires_in: error_grouping_period)
       end
@@ -46,13 +46,13 @@ module ExceptionNotifier
         message_based_key = "exception:#{Zlib.crc32("#{exception.class.name}\nmessage:#{exception.message}")}"
         accumulated_errors_count = 1
 
-        if count = error_count(message_based_key)
+        if (count = error_count(message_based_key))
           accumulated_errors_count = count + 1
           save_error_count(message_based_key, accumulated_errors_count)
         else
           backtrace_based_key = "exception:#{Zlib.crc32("#{exception.class.name}\npath:#{exception.backtrace.try(:first)}")}"
 
-          if count = Rails.cache.read(backtrace_based_key)
+          if (count = error_grouping_cache.read(backtrace_based_key))
             accumulated_errors_count = count + 1
             save_error_count(backtrace_based_key, accumulated_errors_count)
           else

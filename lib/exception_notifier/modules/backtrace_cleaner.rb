@@ -10,6 +10,5 @@ module ExceptionNotifier
         exception.backtrace
       end
     end
-
   end
 end

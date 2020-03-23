@@ -3,13 +3,12 @@ require 'active_support/core_ext/time'
 
 module ExceptionNotifier
   class WebhookNotifier < BaseNotifier
-
     def initialize(options)
       super
       @default_options = options
     end
 
-    def call(exception, options={})
+    def call(exception, options = {})
       env = options[:env]
 
       options = options.reverse_merge(@default_options)
@@ -18,23 +17,27 @@ module ExceptionNotifier
 
       options[:body] ||= {}
       options[:body][:server] = Socket.gethostname
-      options[:body][:process] = $$
+      options[:body][:process] = $PROCESS_ID
       if defined?(Rails) && Rails.respond_to?(:root)
         options[:body][:rails_root] = Rails.root
       end
-      options[:body][:exception] = {:error_class => exception.class.to_s,
-                                    :message => exception.message.inspect,
-                                    :backtrace => exception.backtrace}
+      options[:body][:exception] = {
+        error_class: exception.class.to_s,
+        message: exception.message.inspect,
+        backtrace: exception.backtrace
+      }
       options[:body][:data] = (env && env['exception_notifier.exception_data'] || {}).merge(options[:data] || {})
 
       unless env.nil?
         request = ActionDispatch::Request.new(env)
 
-        request_items = {:url => request.original_url,
-                         :http_method => request.method,
-                         :ip_address => request.remote_ip,
-                         :parameters => request.filtered_parameters,
-                         :timestamp => Time.current }
+        request_items = {
+          url: request.original_url,
+          http_method: request.method,
+          ip_address: request.remote_ip,
+          parameters: request.filtered_parameters,
+          timestamp: Time.current
+        }
 
         options[:body][:request] = request_items
         options[:body][:session] = request.session

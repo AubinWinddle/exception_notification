@@ -1,18 +1,15 @@
-# Configure Rails Environment
-ENV["RAILS_ENV"] = "test"
+require 'coveralls'
+Coveralls.wear!
 
-begin
-  require "coveralls"
-  Coveralls.wear!
-rescue LoadError
-  warn "warning: coveralls gem not found; skipping Coveralls"
-end
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
+require 'exception_notification'
 
-require File.expand_path("../dummy/config/environment.rb", __FILE__)
-require "rails/test_help"
-require File.expand_path("../dummy/test/test_helper.rb", __FILE__)
+require 'minitest/autorun'
+require 'mocha/minitest'
+require 'active_support/test_case'
+require 'action_mailer'
 
-require "mocha/setup"
-
-Rails.backtrace_cleaner.remove_silencers!
 ExceptionNotifier.testing_mode!
+Time.zone = 'UTC'
+ActionMailer::Base.delivery_method = :test
+ActionMailer::Base.append_view_path "#{File.dirname(__FILE__)}/support/views"
